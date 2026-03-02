@@ -166,7 +166,34 @@ async function recognizeWithVisionAI(file: File, fallbackName: string): Promise<
   const isZhipu = AI_BASE_URL.includes('bigmodel.cn');
   const imageUrl = isZhipu ? dataUrl.replace(/^data:image\/[^;]+;base64,/, '') : dataUrl;
 
-  const promptText = '你是专业食谱提取助手，服务于"一人食"场景（1人份）。请仔细观察图片中的所有文字（包括标题、食材列表、步骤说明、配图文字等每一处），完整提取菜名和每一种食材与调味料（不要遗漏任何食材和调味料！）。所有内容必须使用简体中文输出（英文请翻译成中文）。category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料=pantry。只输出 JSON，不要解释。\nJSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"name":"中文食材名","amount":"数量","unit":"单位","category":"fresh|pantry"}]}\n\n请仔细识别这张菜谱图片中的所有文字内容。要求：\n1）recipeName 必须是一个具体的菜品名称（如"红烧排骨""番茄鸡蛋汤"），如果图片标题不是具体菜品名而是泛称或分类（如早餐、午餐、一周食谱、减脂餐、Day1等），则根据食材自动生成一个简短具体的菜品名；\n2）【最重要-完整提取】你必须提取图片中出现的每一种食材和调味料，不能遗漏！特别注意：很多调味料（如蚝油、生抽、料酒、盐、糖、醋、胡椒粉等）不会出现在食材列表中，而是写在烹饪步骤/做法说明的文字里（如"加入葱姜，蚝油"），你必须仔细阅读步骤中的每一句话，把其中提到的所有调味料也提取出来；\n3）所有字段用简体中文输出（英文翻译成中文）；\n4）【重要-用量智能推荐】amount 和 unit 必须是具体的数值和单位。如果图片中食材没有标注具体克重（如写了"适量""少许""一勺""若干"或完全没写用量），你必须根据该菜品1人份的合理烹饪用量，自动推荐具体的数值。参考标准：主食材100-200g，配菜50-100g，肉类100-150g，鸡蛋1-2个，调味料（盐2-3g、生抽5-10ml、料酒10ml、油15ml、蚝油5-10ml、醋5ml等）。unit 使用 g/ml/个/根/片 等常见单位；\n5）【重要-卡路里精确计算】calories 字段为该菜谱1人份的总热量（千卡/kcal）。你必须逐一根据每种食材的用量分别计算热量，然后求和。常见热量参考（每100g）：米饭116、面条110、猪肉395、牛肉125、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、土豆77、山药56、排骨264、玉米112、白菜15；调味料（每10ml/g）：油90、生抽5、蚝油9、盐0、糖39。禁止输出500、300、400、600等整百数作为默认值，必须是根据食材精确计算的结果。如果图片上已标注卡路里则直接使用该数值。';
+  const promptText = `你是专业食谱提取助手，服务于"一人食"场景（1人份）。
+请仔细观察图片中【所有区域】的文字，包括：大标题、食材列表、每一张小图上的步骤说明文字、角落标注等，不要遗漏任何一处文字。
+完整提取菜名和每一种食材与调味料。所有内容必须使用简体中文输出。
+category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料=pantry。只输出 JSON，不要解释。
+JSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"name":"中文食材名","amount":"数量","unit":"单位","category":"fresh|pantry"}]}
+
+要求：
+1）recipeName 必须是一个具体的菜品名称（如"红烧排骨""番茄鸡蛋汤"），如果图片标题不是具体菜品名而是泛称或分类，则根据食材自动生成一个简短具体的菜品名；
+2）【最最重要-调味料完整提取】你必须逐一扫描图片中每一张小图、每一段步骤文字，提取其中提到的所有调味料！
+  常见遗漏场景举例（你必须避免这些遗漏）：
+  - 步骤图上写"少油煎" → 必须提取"食用油"
+  - 步骤图上写"放一勺生抽" → 必须提取"生抽"
+  - 步骤图上写"适量盐" → 必须提取"盐"
+  - 步骤图上写"加蚝油" → 必须提取"蚝油"
+  - 步骤图上写"撒胡椒粉" → 必须提取"胡椒粉"
+  一道菜至少应包含油和盐这两种基础调味料。如果图片中确实没有写任何调味料，也要根据菜品类型自动补充油（15ml）和盐（3g）；
+3）所有字段用简体中文输出（英文翻译成中文）；
+4）【重要-食材名称规范化】
+  - "大米""白米""米"统一写为"米饭"（因为我们计算的是煮熟后的热量）
+  - "口蘑""蘑菇""白蘑菇"统一写为"口蘑"
+  - amount 表示的是该食材在最终成品中的重量（熟食重量），而非生食重量；
+5）【重要-用量智能推荐】amount 和 unit 必须是具体的数值和单位，不能写"适量""少许"。如果图片中没有标注具体克重，根据1人份合理烹饪用量自动推荐。参考：主食材100-200g，配菜50-100g，肉类100-150g，鸡蛋1-2个，调味料（盐2-3g、生抽5-10ml、料酒10ml、油15ml、蚝油5-10ml、醋5ml等）。unit 使用 g/ml/个 等常见单位；
+6）【重要-卡路里精确计算】calories 为1人份总热量（kcal）。你必须按以下步骤逐一计算：
+  对每种食材：热量 = 用量(g) / 100 × 每100g热量。对调味料：热量 = 用量(ml或g) / 10 × 每10ml热量。最后求和。
+  热量参考（每100g熟食）：米饭116、杂粮饭130、面条110、猪肉395、牛肉125、鸡胸肉133、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、口蘑20、土豆77、山药56、排骨264、玉米112、白菜15、娃娃菜12、火腿330。
+  调味料（每10ml/g）：油90、生抽5、蚝油9、盐0、糖39。
+  示例：牛肉150g = 150/100×125 = 187.5；米饭100g = 100/100×116 = 116；食用油15ml = 15/10×90 = 135。
+  禁止输出整百数（如500、300、400、800），必须是精确计算结果。`;
 
   // 构建请求体，智谱与 OpenAI 在部分参数上有差异
   const requestBody: Record<string, unknown> = {
@@ -219,8 +246,22 @@ async function recognizeWithVisionAI(file: File, fallbackName: string): Promise<
         .filter(item => item?.name)
         .map(item => {
           const cleanName = String(item.name).trim();
-          const cleanAmount = String(item.amount || '适量').trim();
-          const cleanUnit = String(item.unit || '').trim();
+          let cleanAmount = String(item.amount || '适量').trim();
+          let cleanUnit = String(item.unit || '').trim();
+
+          // 修复 AI 返回 amount/unit 重复问题（如 amount="1颗" unit="颗" → "1颗颗"）
+          if (cleanUnit && cleanAmount.endsWith(cleanUnit)) {
+            cleanAmount = cleanAmount.slice(0, -cleanUnit.length).trim() || cleanAmount;
+          }
+          // 修复 amount 内嵌单位但 unit 为空的情况（如 amount="1颗" unit=""）
+          if (!cleanUnit) {
+            const m = cleanAmount.match(/^([0-9]+(?:\.[0-9]+)?)\s*(g|kg|ml|l|个|颗|只|根|片|瓣|朵|棵|盒|勺|汤匙|茶匙|cup|cups|tbsp|tsp)$/i);
+            if (m) {
+              cleanAmount = m[1];
+              cleanUnit = m[2];
+            }
+          }
+
           const category = item.category === 'pantry' ? 'pantry' : guessCategory(cleanName);
           return {
             name: cleanName,
@@ -232,13 +273,35 @@ async function recognizeWithVisionAI(file: File, fallbackName: string): Promise<
         })
     : [];
 
-  // 优先使用可信的 AI 卡路里，否则用本地精确估算
+  // 兜底：如果 AI 没有返回任何调味料（pantry），自动补充基础调味料
+  const hasPantry = ingredients.some(i => i.category === 'pantry');
+  if (!hasPantry && ingredients.length > 0) {
+    console.log('[AI识别] 未返回调味料，自动补充基础调味料');
+    const basePantry: Ingredient[] = [
+      { name: '食用油', amount: '15', unit: 'ml', category: 'pantry', originalText: '食用油 15ml' },
+      { name: '盐', amount: '3', unit: 'g', category: 'pantry', originalText: '盐 3g' },
+      { name: '生抽', amount: '5', unit: 'ml', category: 'pantry', originalText: '生抽 5ml' },
+    ];
+    ingredients.push(...basePantry);
+  }
+
+  // 卡路里策略：本地估算为主，AI值为参考
+  // 本地估算器基于完整食材库，比AI计算更稳定可靠
+  const localCal = estimateCalories(ingredients, name);
   let calories = aiCalories;
-  if (!calories || !isCalorieTrustworthy(calories)) {
-    const localCal = estimateCalories(ingredients, name);
-    if (localCal > 0) {
-      console.log(`[卡路里] AI返回${aiCalories ?? '无'}不可信，本地估算: ${localCal}`);
+
+  if (localCal > 0) {
+    if (!calories || !isCalorieTrustworthy(calories)) {
+      // AI 返回的是整百数或无效值，直接用本地
+      console.log(`[卡路里] AI返回${aiCalories ?? '无'}不可信，使用本地估算: ${localCal}`);
       calories = localCal;
+    } else {
+      // AI 返回了非整百数，但仍需与本地比对——偏差超30%则用本地值
+      const deviation = Math.abs(calories - localCal) / localCal;
+      if (deviation > 0.3) {
+        console.log(`[卡路里] AI返回${calories}与本地估算${localCal}偏差${(deviation * 100).toFixed(0)}%，使用本地值`);
+        calories = localCal;
+      }
     }
   }
 

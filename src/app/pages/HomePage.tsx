@@ -29,7 +29,7 @@ export function HomePage() {
     }
 
     // 卡路里算法版本：升级时强制重算所有菜谱的热量
-    const CAL_VERSION = 'v2_cooking_method';
+    const CAL_VERSION = 'v3_expanded_food_db';
     const calVer = localStorage.getItem('solochef_cal_version');
     const forceRecalc = calVer !== CAL_VERSION;
 
