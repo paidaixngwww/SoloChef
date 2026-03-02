@@ -1,4 +1,5 @@
 import { Ingredient } from '../types/recipe';
+import { getCalorieThresholds } from './userProfile';
 
 /* ---------- 标签配色方案 ---------- */
 
@@ -85,12 +86,13 @@ function detectCookingMethod(recipeName: string): string | null {
 }
 
 /**
- * 检测热量等级标签
+ * 检测热量等级标签（根据用户个人档案动态计算）
  */
 function detectCalorieLevel(calories?: number): string | null {
   if (!calories || calories <= 0) return null;
-  if (calories < 200) return '低卡';
-  if (calories <= 400) return '适中';
+  const { low, high } = getCalorieThresholds();
+  if (calories < low) return '低卡';
+  if (calories <= high) return '适中';
   return '高热量';
 }
 

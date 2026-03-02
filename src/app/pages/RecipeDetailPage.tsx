@@ -6,6 +6,7 @@ import { recipeStorage } from '../utils/recipeStorage';
 import { Recipe } from '../types/recipe';
 import { useRecipeImage } from '../hooks/useRecipeImage';
 import { getTagStyle } from '../utils/recipeTagGenerator';
+import { estimateNutrition, generateNutritionTips, NutritionData } from '../utils/nutritionEstimator';
 
 export function RecipeDetailPage() {
   const { id } = useParams();
@@ -50,6 +51,8 @@ export function RecipeDetailPage() {
 
   const freshIngredients = recipe.ingredients.filter(i => i.category === 'fresh');
   const pantryIngredients = recipe.ingredients.filter(i => i.category === 'pantry');
+  const nutrition = estimateNutrition(recipe.ingredients, recipe.name);
+  const nutritionTips = generateNutritionTips(recipe.ingredients, nutrition, recipe.name, recipe.calories);
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: '#F9F7F2' }}>
@@ -257,26 +260,191 @@ export function RecipeDetailPage() {
           )}
         </motion.div>
 
-        {/* AI Tip */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-white rounded-2xl p-4 mt-6 shadow-sm"
-        >
-          <div className="flex gap-3">
-            <span className="text-2xl">💡</span>
-            <div className="flex-1">
-              <p className="text-sm mb-1" style={{ color: '#3D405B' }}>
-                <strong>AI 提示</strong>
-              </p>
-              <p className="text-sm" style={{ color: '#81B29A' }}>
-                此菜谱已自动转换为 {recipe.servings} 人份。如需调整份量，可在购物清单页面查看合并后的总用量。
-              </p>
+        {/* Nutrition Breakdown */}
+        <NutritionBreakdown nutrition={nutrition} displayCalories={recipe.calories} delay={0.45} />
+
+        {/* 营养特点与建议 */}
+        {nutritionTips.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-white rounded-2xl p-6 mt-6 shadow-sm"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: '#F4A26120' }}
+              >
+                <span style={{ color: '#F4A261' }}>💡</span>
+              </div>
+              <h2 className="text-lg" style={{ color: '#3D405B' }}>
+                营养特点与建议
+              </h2>
             </div>
-          </div>
-        </motion.div>
+            <div className="space-y-4">
+              {nutritionTips.map((tip, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.55 + idx * 0.08 }}
+                  className="flex gap-3"
+                >
+                  <span className="text-lg flex-shrink-0 mt-0.5">{tip.icon}</span>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium mb-0.5" style={{ color: '#3D405B' }}>
+                      {tip.title}
+                    </p>
+                    <p className="text-sm leading-relaxed" style={{ color: '#81B29A' }}>
+                      {tip.content}
+                    </p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
+  );
+}
+
+/* ---------- 环形图 SVG 组件 ---------- */
+
+function DonutChart({ segments, size = 120 }: {
+  segments: { value: number; color: string; label: string }[];
+  size?: number;
+}) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0);
+  if (total === 0) return null;
+
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size / 2 - 8;
+  const strokeWidth = 14;
+  const circumference = 2 * Math.PI * radius;
+
+  let accumulated = 0;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* 底色环 */}
+      <circle
+        cx={cx} cy={cy} r={radius}
+        fill="none" stroke="#F0EDE6" strokeWidth={strokeWidth}
+      />
+      {segments.map((seg, i) => {
+        const ratio = seg.value / total;
+        const dashLen = circumference * ratio;
+        const dashGap = circumference - dashLen;
+        const offset = circumference * (1 - accumulated) + circumference * 0.25;
+        accumulated += ratio;
+
+        return (
+          <circle
+            key={i}
+            cx={cx} cy={cy} r={radius}
+            fill="none"
+            stroke={seg.color}
+            strokeWidth={strokeWidth}
+            strokeDasharray={`${dashLen} ${dashGap}`}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            style={{ transition: 'stroke-dasharray 0.6s ease, stroke-dashoffset 0.6s ease' }}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+
+/* ---------- 营养素拆分栏目 ---------- */
+
+function NutritionBreakdown({ nutrition, displayCalories, delay }: { nutrition: NutritionData; displayCalories?: number; delay: number }) {
+  const items = [
+    { label: '蛋白质', value: nutrition.protein, unit: 'g', color: '#E07A5F', calPerGram: 4 },
+    { label: '脂肪', value: nutrition.fat, unit: 'g', color: '#F4A261', calPerGram: 9 },
+    { label: '碳水', value: nutrition.carbs, unit: 'g', color: '#81B29A', calPerGram: 4 },
+    { label: '膳食纤维', value: nutrition.fiber, unit: 'g', color: '#3D405B', calPerGram: 2 },
+  ];
+
+  const totalCal = items.reduce((s, it) => s + it.value * it.calPerGram, 0);
+  const segments = items
+    .filter(it => it.value > 0)
+    .map(it => ({
+      value: it.value * it.calPerGram,
+      color: it.color,
+      label: it.label,
+    }));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className="bg-white rounded-2xl p-6 mt-4 shadow-sm"
+    >
+      <div className="flex items-center gap-2 mb-5">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center"
+          style={{ backgroundColor: '#E07A5F20' }}
+        >
+          <span style={{ color: '#E07A5F' }}>📊</span>
+        </div>
+        <h2 className="text-lg" style={{ color: '#3D405B' }}>
+          营养素拆分
+        </h2>
+      </div>
+
+      <div className="flex items-center gap-6">
+        {/* 环形图 */}
+        <div className="relative flex-shrink-0">
+          <DonutChart segments={segments} size={120} />
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-lg font-bold" style={{ color: '#3D405B' }}>
+              {displayCalories ?? nutrition.calories}
+            </span>
+            <span className="text-xs" style={{ color: '#81B29A' }}>kcal</span>
+          </div>
+        </div>
+
+        {/* 详细数据 */}
+        <div className="flex-1 space-y-3">
+          {items.map((item) => {
+            const calContribution = item.value * item.calPerGram;
+            const pct = totalCal > 0 ? Math.round((calContribution / totalCal) * 100) : 0;
+            return (
+              <div key={item.label}>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-sm" style={{ color: '#3D405B' }}>
+                      {item.label}
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium" style={{ color: item.color }}>
+                    {item.value}{item.unit}
+                    <span className="text-xs opacity-60 ml-1">{pct}%</span>
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#F0EDE6' }}>
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ backgroundColor: item.color }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${pct}%` }}
+                    transition={{ delay: delay + 0.2, duration: 0.6, ease: 'easeOut' }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </motion.div>
   );
 }
