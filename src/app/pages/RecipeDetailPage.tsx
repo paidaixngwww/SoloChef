@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { recipeStorage } from '../utils/recipeStorage';
 import { Recipe } from '../types/recipe';
 import { useRecipeImage } from '../hooks/useRecipeImage';
+import { getTagStyle } from '../utils/recipeTagGenerator';
 
 export function RecipeDetailPage() {
   const { id } = useParams();
@@ -145,18 +146,21 @@ export function RecipeDetailPage() {
           {/* Tags */}
           {recipe.tags && recipe.tags.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              {recipe.tags.map((tag, idx) => (
-                <span
-                  key={idx}
-                  className="px-3 py-1 rounded-lg text-sm"
-                  style={{
-                    backgroundColor: '#F9F7F2',
-                    color: '#81B29A',
-                  }}
-                >
-                  {tag}
-                </span>
-              ))}
+              {recipe.tags.map((tag, idx) => {
+                const style = getTagStyle(tag);
+                return (
+                  <span
+                    key={idx}
+                    className="px-3 py-1 rounded-lg text-sm font-medium"
+                    style={{
+                      backgroundColor: style.backgroundColor,
+                      color: style.color,
+                    }}
+                  >
+                    {tag}
+                  </span>
+                );
+              })}
             </div>
           )}
         </motion.div>

@@ -1,13 +1,14 @@
 import { Recipe } from '../types/recipe';
+import { generateRecipeTags } from './recipeTagGenerator';
 
-export const mockRecipes: Recipe[] = [
+// 先定义基础数据，再用智能标签生成器生成标签
+const baseRecipes: Omit<Recipe, 'tags'>[] = [
   {
     id: '1',
     name: '番茄炒蛋',
     imageUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
     servings: 1,
     calories: 245,
-    tags: ['快手', '家常'],
     selected: false,
     ingredients: [
       { name: '番茄', amount: '2', unit: '个', category: 'fresh', originalText: '番茄 2个' },
@@ -24,7 +25,6 @@ export const mockRecipes: Recipe[] = [
     imageUrl: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=800',
     servings: 1,
     calories: 120,
-    tags: ['清淡', '健康'],
     selected: false,
     ingredients: [
       { name: '西芹', amount: '150', unit: 'g', category: 'fresh', originalText: '西芹 150g' },
@@ -41,7 +41,6 @@ export const mockRecipes: Recipe[] = [
     imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800',
     servings: 1,
     calories: 320,
-    tags: ['下饭', '家常'],
     selected: false,
     ingredients: [
       { name: '芹菜', amount: '100', unit: 'g', category: 'fresh', originalText: '芹菜 100g' },
@@ -60,7 +59,6 @@ export const mockRecipes: Recipe[] = [
     imageUrl: 'https://images.unsplash.com/photo-1498837167922-ddd27525d352?w=800',
     servings: 1,
     calories: 95,
-    tags: ['素食', '快手'],
     selected: false,
     ingredients: [
       { name: '小白菜', amount: '200', unit: 'g', category: 'fresh', originalText: '小白菜 200g' },
@@ -77,7 +75,6 @@ export const mockRecipes: Recipe[] = [
     imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800',
     servings: 1,
     calories: 285,
-    tags: ['川菜', '下饭'],
     selected: false,
     ingredients: [
       { name: '嫩豆腐', amount: '1', unit: '盒', category: 'fresh', originalText: '嫩豆腐 1盒' },
@@ -96,7 +93,6 @@ export const mockRecipes: Recipe[] = [
     imageUrl: 'https://images.unsplash.com/photo-1459411552884-841db9b3cc2a?w=800',
     servings: 1,
     calories: 110,
-    tags: ['健康', '快手'],
     selected: false,
     ingredients: [
       { name: '西兰花', amount: '200', unit: 'g', category: 'fresh', originalText: '西兰花 200g' },
@@ -107,3 +103,9 @@ export const mockRecipes: Recipe[] = [
     ],
   },
 ];
+
+// 为每道菜谱自动生成智能标签
+export const mockRecipes: Recipe[] = baseRecipes.map(r => ({
+  ...r,
+  tags: generateRecipeTags(r.name, r.ingredients, r.calories),
+}));

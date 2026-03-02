@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState';
 import { recipeStorage } from '../utils/recipeStorage';
 import { removeImage } from '../utils/imageStorage';
 import { estimateCalories, isCalorieTrustworthy } from '../utils/calorieEstimator';
+import { generateRecipeTags } from '../utils/recipeTagGenerator';
 import { mockRecipes } from '../utils/mockData';
 import { Recipe } from '../types/recipe';
 
@@ -32,6 +33,11 @@ export function HomePage() {
     const calVer = localStorage.getItem('solochef_cal_version');
     const forceRecalc = calVer !== CAL_VERSION;
 
+    // 标签方案版本：升级时为所有菜谱重新生成智能标签
+    const TAG_VERSION = 'v2_smart_tags';
+    const tagVer = localStorage.getItem('solochef_tag_version');
+    const forceRegenTags = tagVer !== TAG_VERSION;
+
     let updated = false;
     for (const r of stored) {
       if (r.ingredients.length > 0 && (forceRecalc || !r.calories || !isCalorieTrustworthy(r.calories))) {
@@ -42,6 +48,13 @@ export function HomePage() {
           updated = true;
         }
       }
+      // 标签迁移：重新生成智能标签
+      if (forceRegenTags) {
+        const newTags = generateRecipeTags(r.name, r.ingredients, r.calories);
+        r.tags = newTags;
+        recipeStorage.update(r.id, { tags: newTags });
+        updated = true;
+      }
       // 修复已失效的 blob URL → 替换为占位图
       if (r.imageUrl && r.imageUrl.startsWith('blob:')) {
         r.imageUrl = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800';
@@ -50,6 +63,7 @@ export function HomePage() {
       }
     }
     if (forceRecalc) localStorage.setItem('solochef_cal_version', CAL_VERSION);
+    if (forceRegenTags) localStorage.setItem('solochef_tag_version', TAG_VERSION);
     if (updated) stored = recipeStorage.getAll();
     setRecipes(stored);
   }, []);

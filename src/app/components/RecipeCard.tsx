@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { Recipe } from '../types/recipe';
 import { useRecipeImage } from '../hooks/useRecipeImage';
+import { getTagStyle } from '../utils/recipeTagGenerator';
 
 interface RecipeCardProps {
   recipe: Recipe;
@@ -92,19 +93,22 @@ export function RecipeCard({ recipe, onToggleSelect, onDelete }: RecipeCardProps
 
         {/* Tags */}
         {recipe.tags && recipe.tags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {recipe.tags.map((tag, idx) => (
-              <span
-                key={idx}
-                className="px-2 py-1 rounded-lg text-xs"
-                style={{
-                  backgroundColor: '#F9F7F2',
-                  color: '#81B29A',
-                }}
-              >
-                {tag}
-              </span>
-            ))}
+          <div className="flex flex-wrap gap-1.5">
+            {recipe.tags.map((tag, idx) => {
+              const style = getTagStyle(tag);
+              return (
+                <span
+                  key={idx}
+                  className="px-2 py-0.5 rounded-md text-xs font-medium"
+                  style={{
+                    backgroundColor: style.backgroundColor,
+                    color: style.color,
+                  }}
+                >
+                  {tag}
+                </span>
+              );
+            })}
           </div>
         )}
 

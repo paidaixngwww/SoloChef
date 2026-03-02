@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { recipeStorage } from '../utils/recipeStorage';
 import { saveImage } from '../utils/imageStorage';
 import { estimateCalories, isCalorieTrustworthy } from '../utils/calorieEstimator';
+import { generateRecipeTags } from '../utils/recipeTagGenerator';
 import { Ingredient, Recipe } from '../types/recipe';
 
 type InputMode = 'link' | 'photo' | 'text';
@@ -165,7 +166,7 @@ async function recognizeWithVisionAI(file: File, fallbackName: string): Promise<
   const isZhipu = AI_BASE_URL.includes('bigmodel.cn');
   const imageUrl = isZhipu ? dataUrl.replace(/^data:image\/[^;]+;base64,/, '') : dataUrl;
 
-  const promptText = '你是专业食谱提取助手，服务于"一人食"场景（1人份）。请仔细观察图片中的所有文字，完整提取菜名和每一种食材（不要遗漏任何食材！）。所有内容必须使用简体中文输出（英文请翻译成中文）。category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料=pantry。只输出 JSON，不要解释。\nJSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"name":"中文食材名","amount":"数量","unit":"单位","category":"fresh|pantry"}]}\n\n请仔细识别这张菜谱图片中的所有文字内容。要求：\n1）recipeName 必须是一个具体的菜品名称（如"红烧排骨""番茄鸡蛋汤"），如果图片标题不是具体菜品名而是泛称或分类（如早餐、午餐、一周食谱、减脂餐、Day1等），则根据食材自动生成一个简短具体的菜品名；\n2）提取图片中出现的每一种食材及其用量，不能遗漏；\n3）所有字段用简体中文输出（英文翻译成中文）；\n4）【重要-用量智能推荐】amount 和 unit 必须是具体的数值和单位。如果图片中食材没有标注具体克重（如写了"适量""少许""一勺""若干"或完全没写用量），你必须根据该菜品1人份的合理烹饪用量，自动推荐具体的数值。参考标准：主食材100-200g，配菜50-100g，肉类100-150g，鸡蛋1-2个，调味料（盐2-3g、生抽5-10ml、料酒10ml、油15ml等）。unit 使用 g/ml/个/根/片 等常见单位；\n5）【重要-卡路里精确计算】calories 字段为该菜谱1人份的总热量（千卡/kcal）。你必须逐一根据每种食材的用量分别计算热量，然后求和。常见热量参考（每100g）：米饭116、面条110、猪肉395、牛肉125、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、土豆77、山药56、排骨264、玉米112、白菜15；调味料（每10ml/g）：油90、生抽5、蚝油9、盐0、糖39。禁止输出500、300、400、600等整百数作为默认值，必须是根据食材精确计算的结果。如果图片上已标注卡路里则直接使用该数值。';
+  const promptText = '你是专业食谱提取助手，服务于"一人食"场景（1人份）。请仔细观察图片中的所有文字（包括标题、食材列表、步骤说明、配图文字等每一处），完整提取菜名和每一种食材与调味料（不要遗漏任何食材和调味料！）。所有内容必须使用简体中文输出（英文请翻译成中文）。category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料=pantry。只输出 JSON，不要解释。\nJSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"name":"中文食材名","amount":"数量","unit":"单位","category":"fresh|pantry"}]}\n\n请仔细识别这张菜谱图片中的所有文字内容。要求：\n1）recipeName 必须是一个具体的菜品名称（如"红烧排骨""番茄鸡蛋汤"），如果图片标题不是具体菜品名而是泛称或分类（如早餐、午餐、一周食谱、减脂餐、Day1等），则根据食材自动生成一个简短具体的菜品名；\n2）【最重要-完整提取】你必须提取图片中出现的每一种食材和调味料，不能遗漏！特别注意：很多调味料（如蚝油、生抽、料酒、盐、糖、醋、胡椒粉等）不会出现在食材列表中，而是写在烹饪步骤/做法说明的文字里（如"加入葱姜，蚝油"），你必须仔细阅读步骤中的每一句话，把其中提到的所有调味料也提取出来；\n3）所有字段用简体中文输出（英文翻译成中文）；\n4）【重要-用量智能推荐】amount 和 unit 必须是具体的数值和单位。如果图片中食材没有标注具体克重（如写了"适量""少许""一勺""若干"或完全没写用量），你必须根据该菜品1人份的合理烹饪用量，自动推荐具体的数值。参考标准：主食材100-200g，配菜50-100g，肉类100-150g，鸡蛋1-2个，调味料（盐2-3g、生抽5-10ml、料酒10ml、油15ml、蚝油5-10ml、醋5ml等）。unit 使用 g/ml/个/根/片 等常见单位；\n5）【重要-卡路里精确计算】calories 字段为该菜谱1人份的总热量（千卡/kcal）。你必须逐一根据每种食材的用量分别计算热量，然后求和。常见热量参考（每100g）：米饭116、面条110、猪肉395、牛肉125、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、土豆77、山药56、排骨264、玉米112、白菜15；调味料（每10ml/g）：油90、生抽5、蚝油9、盐0、糖39。禁止输出500、300、400、600等整百数作为默认值，必须是根据食材精确计算的结果。如果图片上已标注卡路里则直接使用该数值。';
 
   // 构建请求体，智谱与 OpenAI 在部分参数上有差异
   const requestBody: Record<string, unknown> = {
@@ -286,7 +287,7 @@ export function AddRecipePage() {
             imageUrl: `indexeddb://${recipeId}`,
             servings: 1,
             calories: aiResult.calories,
-            tags: ['AI生成'],
+            tags: generateRecipeTags(aiResult.name, finalIngredients, aiResult.calories),
             selected: false,
             ingredients: finalIngredients,
           });
@@ -328,7 +329,7 @@ export function AddRecipePage() {
           name: detectedName,
           imageUrl: `indexeddb://${ocrRecipeId}`,
           servings: 1,
-          tags: ['AI生成'],
+          tags: generateRecipeTags(detectedName, ingredients),
           selected: false,
           ingredients,
         });
@@ -349,18 +350,19 @@ export function AddRecipePage() {
     }
 
     setTimeout(() => {
+      const defaultIngredients: Ingredient[] = [
+        { name: '主料', amount: '100', unit: 'g', category: 'fresh', originalText: '主料 100g' },
+        { name: '配菜', amount: '50', unit: 'g', category: 'fresh', originalText: '配菜 50g' },
+        { name: '调味料', amount: '适量', unit: '', category: 'pantry', originalText: '调味料 适量' },
+      ];
       const newRecipe: Recipe = {
         id: Date.now().toString(),
         name: recipeName,
         imageUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
         servings: 1,
-        tags: ['AI生成'],
+        tags: generateRecipeTags(recipeName, defaultIngredients),
         selected: false,
-        ingredients: [
-          { name: '主料', amount: '100', unit: 'g', category: 'fresh', originalText: '主料 100g' },
-          { name: '配菜', amount: '50', unit: 'g', category: 'fresh', originalText: '配菜 50g' },
-          { name: '调味料', amount: '适量', unit: '', category: 'pantry', originalText: '调味料 适量' },
-        ],
+        ingredients: defaultIngredients,
       };
 
       recipeStorage.add(newRecipe);
