@@ -6,7 +6,7 @@ import { RecipeCard } from '../components/RecipeCard';
 import { EmptyState } from '../components/EmptyState';
 import { recipeStorage } from '../utils/recipeStorage';
 import { removeImage } from '../utils/imageStorage';
-import { estimateCalories, isCalorieTrustworthy } from '../utils/calorieEstimator';
+import { estimateNutrition } from '../utils/nutritionEstimator';
 import { generateRecipeTags } from '../utils/recipeTagGenerator';
 import { userProfileStorage } from '../utils/userProfile';
 import { mockRecipes } from '../utils/mockData';
@@ -31,7 +31,7 @@ export function HomePage() {
     }
 
     // 卡路里算法版本：升级时强制重算所有菜谱的热量
-    const CAL_VERSION = 'v3_expanded_food_db';
+    const CAL_VERSION = 'v4_nutrition_based';
     const calVer = localStorage.getItem('solochef_cal_version');
     const forceRecalc = calVer !== CAL_VERSION;
 
@@ -47,11 +47,12 @@ export function HomePage() {
 
     let updated = false;
     for (const r of stored) {
-      if (r.ingredients.length > 0 && (forceRecalc || !r.calories || !isCalorieTrustworthy(r.calories))) {
-        const cal = estimateCalories(r.ingredients, r.name);
-        if (cal > 0) {
-          r.calories = cal;
-          recipeStorage.update(r.id, { calories: cal });
+      // 使用 estimateNutrition 计算热量（与详情页保持一致）
+      if (r.ingredients.length > 0 && (forceRecalc || !r.calories)) {
+        const nutrition = estimateNutrition(r.ingredients, r.name);
+        if (nutrition.calories > 0) {
+          r.calories = nutrition.calories;
+          recipeStorage.update(r.id, { calories: nutrition.calories });
           updated = true;
         }
       }

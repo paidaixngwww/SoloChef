@@ -5,14 +5,18 @@ import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { recipeStorage } from '../utils/recipeStorage';
 import { saveImage } from '../utils/imageStorage';
-import { estimateCalories, isCalorieTrustworthy } from '../utils/calorieEstimator';
+import { estimateNutrition } from '../utils/nutritionEstimator';
+import { isCalorieTrustworthy } from '../utils/calorieEstimator';
 import { generateRecipeTags } from '../utils/recipeTagGenerator';
 import { Ingredient, Recipe } from '../types/recipe';
 
 type InputMode = 'link' | 'photo' | 'text';
 
 const PANTRY_KEYWORDS = [
-  '盐', '糖', '酱', '醋', '油', '料酒', '生抽', '老抽', '胡椒', '淀粉', '耗油', '蚝油', 'ketchup', 'salt', 'sugar', 'soy', 'oil'
+  '盐', '糖', '酱', '醋', '油', '料酒', '生抽', '老抽', '胡椒', '淀粉', '耗油', '蚝油',
+  '蜂蜜', '柠檬汁', '沙拉汁', '沙拉酱', '芥末', '味噌', '味醂', '辣酱', '芝麻',
+  '黑胡椒', '海盐', '花椒', '桂皮', '八角', '干辣椒', '辣椒粉', '咖喱',
+  'ketchup', 'salt', 'sugar', 'soy', 'oil', 'honey', 'vinegar', 'mustard',
 ];
 
 const NAME_BLACKLIST = ['食材', '步骤', '做法', 'ingredients', 'instructions', 'method'];
@@ -157,6 +161,136 @@ function extractRecipeNameFromText(text: string, fallbackName: string): string {
   return scored[0] && scored[0].score > 0 ? scored[0].line : fallbackName;
 }
 
+async function generateRecipeByName(dishName: string): Promise<{ name: string; ingredients: Ingredient[]; calories?: number } | null> {
+  if (!AI_API_KEY) {
+    throw new Error('未配置 AI 密钥，无法根据菜名生成食材');
+  }
+
+  const promptText = `你是专业中餐食谱助手，服务于"一人食"场景（1人份）。
+用户输入了一道菜名："${dishName}"。
+请根据这道菜的标准做法，生成完整的一人食食材清单。所有内容使用简体中文。
+只输出 JSON，不要解释。
+
+JSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"name":"中文食材名","amount":"数量","unit":"单位","category":"fresh|pantry"}]}
+
+要求：
+1）recipeName 使用用户输入的菜名或最接近的标准菜名；
+2）category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料=pantry；
+3）【完整食材】列出该菜品所需的所有食材和调味料，一般包含3-8种生鲜食材 + 3-6种调味料；
+4）【食材名称规范化】
+  - "大米""白米""米"统一写为"米饭"（煮熟后重量）
+  - "口蘑""蘑菇""白蘑菇"统一写为"口蘑"
+  - 使用最常见的中文名称；
+5）【用量精确】amount 和 unit 必须是具体数值，不能写"适量""少许"。参考一人份用量：
+  - 主食材 100-200g，配菜 50-100g，肉类 100-150g
+  - 鸡蛋 1-2个，豆腐 150-200g
+  - 调味料：盐 2-3g、生抽 5-10ml、料酒 10ml、食用油 15ml、蚝油 5-10ml、醋 5ml、糖 3-5g、豆瓣酱 10-15g、花椒 2g、干辣椒 3-5g 等；
+6）【卡路里精确计算】calories 为1人份总热量（kcal），按以下步骤计算：
+  对每种食材：热量 = 用量(g) / 100 × 每100g热量。对调味料：热量 = 用量(ml或g) / 10 × 每10ml热量。最后求和。
+  热量参考（每100g）：米饭116、猪肉395、猪肝129、牛肉125、鸡胸肉133、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、口蘑20、土豆77、青椒22、洋葱40、芹菜14、韭菜26、菠菜24、白菜15。
+  调味料（每10ml/g）：油90、生抽5、蚝油9、盐0、糖39、醋3、料酒9、豆瓣酱18。
+  禁止输出整百数（如500、300、400、800），必须是精确计算结果。`;
+
+  const isZhipu = AI_BASE_URL.includes('bigmodel.cn');
+
+  const requestBody: Record<string, unknown> = {
+    model: AI_MODEL,
+    messages: [
+      { role: 'user', content: promptText }
+    ]
+  };
+
+  if (!isZhipu) {
+    requestBody.temperature = 0.3;
+    requestBody.max_tokens = 2048;
+  }
+
+  console.log('[AI生成] 菜名模式，发送请求:', dishName);
+
+  const response = await fetch(`${AI_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${AI_API_KEY}`,
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => '');
+    console.error('[AI生成] 请求失败:', response.status, errBody);
+    throw new Error(`AI请求失败: ${response.status}`);
+  }
+
+  const result = await response.json();
+  const content = result?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') return null;
+
+  const parsed = parseAiJson(content);
+  if (!parsed) return null;
+
+  const name = (parsed.recipeName || '').trim() || dishName;
+  const aiCalories = typeof parsed.calories === 'number' && parsed.calories > 0 ? Math.round(parsed.calories) : undefined;
+  const ingredients = Array.isArray(parsed.ingredients)
+    ? parsed.ingredients
+        .filter(item => item?.name)
+        .map(item => {
+          const cleanName = String(item.name).trim();
+          let cleanAmount = String(item.amount || '适量').trim();
+          let cleanUnit = String(item.unit || '').trim();
+
+          if (cleanUnit && cleanAmount.endsWith(cleanUnit)) {
+            cleanAmount = cleanAmount.slice(0, -cleanUnit.length).trim() || cleanAmount;
+          }
+          if (!cleanUnit) {
+            const m = cleanAmount.match(/^([0-9]+(?:\.[0-9]+)?)\s*(g|kg|ml|l|个|颗|只|根|片|瓣|朵|棵|盒|勺|汤匙|茶匙|cup|cups|tbsp|tsp)$/i);
+            if (m) {
+              cleanAmount = m[1];
+              cleanUnit = m[2];
+            }
+          }
+
+          const category = item.category === 'pantry' ? 'pantry' : guessCategory(cleanName);
+          return {
+            name: cleanName,
+            amount: cleanAmount,
+            unit: cleanUnit,
+            category,
+            originalText: `${cleanName} ${cleanAmount}${cleanUnit}`.trim(),
+          } as Ingredient;
+        })
+    : [];
+
+  // 兜底：补充基础调味料
+  const hasPantry = ingredients.some(i => i.category === 'pantry');
+  if (!hasPantry && ingredients.length > 0) {
+    ingredients.push(
+      { name: '食用油', amount: '15', unit: 'ml', category: 'pantry', originalText: '食用油 15ml' },
+      { name: '盐', amount: '3', unit: 'g', category: 'pantry', originalText: '盐 3g' },
+      { name: '生抽', amount: '5', unit: 'ml', category: 'pantry', originalText: '生抽 5ml' },
+    );
+  }
+
+  // 卡路里策略：本地估算为主
+  const localCal = estimateNutrition(ingredients, name).calories;
+  let calories = aiCalories;
+
+  if (localCal > 0) {
+    if (!calories || !isCalorieTrustworthy(calories)) {
+      console.log(`[卡路里] AI返回${aiCalories ?? '无'}不可信，使用本地估算: ${localCal}`);
+      calories = localCal;
+    } else {
+      const deviation = Math.abs(calories - localCal) / localCal;
+      if (deviation > 0.3) {
+        console.log(`[卡路里] AI返回${calories}与本地估算${localCal}偏差${(deviation * 100).toFixed(0)}%，使用本地值`);
+        calories = localCal;
+      }
+    }
+  }
+
+  return { name, ingredients, calories };
+}
+
 async function recognizeWithVisionAI(file: File, fallbackName: string): Promise<{ name: string; ingredients: Ingredient[]; calories?: number } | null> {
   if (!AI_API_KEY) return null;
 
@@ -169,29 +303,36 @@ async function recognizeWithVisionAI(file: File, fallbackName: string): Promise<
   const promptText = `你是专业食谱提取助手，服务于"一人食"场景（1人份）。
 请仔细观察图片中【所有区域】的文字，包括：大标题、食材列表、每一张小图上的步骤说明文字、角落标注等，不要遗漏任何一处文字。
 完整提取菜名和每一种食材与调味料。所有内容必须使用简体中文输出。
-category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料=pantry。只输出 JSON，不要解释。
+category 分类规则：生鲜蔬菜肉蛋奶豆腐=fresh，油盐酱醋糖调味料香料酱汁蜂蜜柠檬汁=pantry。只输出 JSON，不要解释。
 JSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"name":"中文食材名","amount":"数量","unit":"单位","category":"fresh|pantry"}]}
 
 要求：
 1）recipeName 必须是一个具体的菜品名称（如"红烧排骨""番茄鸡蛋汤"），如果图片标题不是具体菜品名而是泛称或分类，则根据食材自动生成一个简短具体的菜品名；
-2）【最最重要-调味料完整提取】你必须逐一扫描图片中每一张小图、每一段步骤文字，提取其中提到的所有调味料！
+2）【最最重要-调味料完整提取】你必须逐一扫描图片中每一张小图、每一段步骤文字，提取其中提到的所有调味料和酱汁！
+  ★ 必须提取的调味料类型（不限于以下列表）：
+  【中式】油、盐、生抽、老抽、蚝油、料酒、醋、糖、豆瓣酱、番茄酱、花椒、干辣椒、胡椒粉、黑胡椒、姜、蒜、葱、香油、芝麻油
+  【西式/沙拉类】橄榄油、沙拉汁、沙拉酱、黑胡椒、海盐、蜂蜜、柠檬汁、柠檬、意大利醋、红酒醋、芥末酱、千岛酱、蛋黄酱、罗勒、迷迭香、百里香
+  【日韩】味噌、味醂、清酒、寿司醋、芥末、韩式辣酱、芝麻
   常见遗漏场景举例（你必须避免这些遗漏）：
   - 步骤图上写"少油煎" → 必须提取"食用油"
-  - 步骤图上写"放一勺生抽" → 必须提取"生抽"
-  - 步骤图上写"适量盐" → 必须提取"盐"
-  - 步骤图上写"加蚝油" → 必须提取"蚝油"
-  - 步骤图上写"撒胡椒粉" → 必须提取"胡椒粉"
-  一道菜至少应包含油和盐这两种基础调味料。如果图片中确实没有写任何调味料，也要根据菜品类型自动补充油（15ml）和盐（3g）；
+  - 步骤图上写"1勺沙拉汁" → 必须提取"沙拉汁 15ml"
+  - 步骤图上写"1勺蜂蜜" → 必须提取"蜂蜜 15g"
+  - 步骤图上写"1勺柠檬汁" → 必须提取"柠檬汁 15ml"
+  - 步骤图上写"适量海盐黑胡椒" → 必须分别提取"盐 2g"和"黑胡椒粉 1g"
+  - 步骤图上写"1勺橄榄油" → 必须提取"橄榄油 15ml"
+  - "加料酒腌制" → 必须提取"料酒"
+  注意："1勺"约等于15ml或15g，"半勺"约7-8ml。
+  一道菜至少应包含2种以上调味料。如果图片中确实没有写任何调味料，也要根据菜品类型自动补充油（15ml）和盐（3g）；
 3）所有字段用简体中文输出（英文翻译成中文）；
 4）【重要-食材名称规范化】
   - "大米""白米""米"统一写为"米饭"（因为我们计算的是煮熟后的热量）
   - "口蘑""蘑菇""白蘑菇"统一写为"口蘑"
   - amount 表示的是该食材在最终成品中的重量（熟食重量），而非生食重量；
-5）【重要-用量智能推荐】amount 和 unit 必须是具体的数值和单位，不能写"适量""少许"。如果图片中没有标注具体克重，根据1人份合理烹饪用量自动推荐。参考：主食材100-200g，配菜50-100g，肉类100-150g，鸡蛋1-2个，调味料（盐2-3g、生抽5-10ml、料酒10ml、油15ml、蚝油5-10ml、醋5ml等）。unit 使用 g/ml/个 等常见单位；
+5）【重要-用量智能推荐】amount 和 unit 必须是具体的数值和单位，不能写"适量""少许"。如果图片中没有标注具体克重，根据1人份合理烹饪用量自动推荐。参考：主食材100-200g，配菜50-100g，肉类100-150g，鸡蛋1-2个，调味料（盐2-3g、生抽5-10ml、料酒10ml、油15ml、蚝油5-10ml、醋5ml、蜂蜜15g、柠檬汁15ml、沙拉汁15ml、橄榄油15ml、黑胡椒粉1-2g等）。unit 使用 g/ml/个 等常见单位；
 6）【重要-卡路里精确计算】calories 为1人份总热量（kcal）。你必须按以下步骤逐一计算：
   对每种食材：热量 = 用量(g) / 100 × 每100g热量。对调味料：热量 = 用量(ml或g) / 10 × 每10ml热量。最后求和。
-  热量参考（每100g熟食）：米饭116、杂粮饭130、面条110、猪肉395、牛肉125、鸡胸肉133、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、口蘑20、土豆77、山药56、排骨264、玉米112、白菜15、娃娃菜12、火腿330。
-  调味料（每10ml/g）：油90、生抽5、蚝油9、盐0、糖39。
+  热量参考（每100g熟食）：米饭116、杂粮饭130、面条110、猪肉395、牛肉125、鸡胸肉133、鸡肉167、鸡蛋72/个、虾仁87、豆腐81、番茄19、胡萝卜37、西兰花34、口蘑20、土豆77、山药56、排骨264、玉米112、白菜15、娃娃菜12、火腿330、芦笋22、芒果60。
+  调味料（每10ml/g）：油90、橄榄油90、生抽5、蚝油9、盐0、糖39、蜂蜜32、柠檬汁2、沙拉汁15、黑胡椒粉25、料酒9、醋3。
   示例：牛肉150g = 150/100×125 = 187.5；米饭100g = 100/100×116 = 116；食用油15ml = 15/10×90 = 135。
   禁止输出整百数（如500、300、400、800），必须是精确计算结果。`;
 
@@ -287,7 +428,7 @@ JSON 格式: {"recipeName":"中文菜名","calories":数字,"ingredients":[{"nam
 
   // 卡路里策略：本地估算为主，AI值为参考
   // 本地估算器基于完整食材库，比AI计算更稳定可靠
-  const localCal = estimateCalories(ingredients, name);
+  const localCal = estimateNutrition(ingredients, name).calories;
   let calories = aiCalories;
 
   if (localCal > 0) {
@@ -412,26 +553,35 @@ export function AddRecipePage() {
       return;
     }
 
-    setTimeout(() => {
-      const defaultIngredients: Ingredient[] = [
-        { name: '主料', amount: '100', unit: 'g', category: 'fresh', originalText: '主料 100g' },
-        { name: '配菜', amount: '50', unit: 'g', category: 'fresh', originalText: '配菜 50g' },
-        { name: '调味料', amount: '适量', unit: '', category: 'pantry', originalText: '调味料 适量' },
-      ];
-      const newRecipe: Recipe = {
-        id: Date.now().toString(),
-        name: recipeName,
-        imageUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
-        servings: 1,
-        tags: generateRecipeTags(recipeName, defaultIngredients),
-        selected: false,
-        ingredients: defaultIngredients,
-      };
+    // 菜名/链接模式：调用 AI 生成一人食食材清单
+    try {
+      const aiResult = await generateRecipeByName(recipeName.trim());
 
-      recipeStorage.add(newRecipe);
-      setIsProcessing(false);
-      navigate('/');
-    }, 1200);
+      if (aiResult && aiResult.ingredients.length > 0) {
+        const recipeId = Date.now().toString();
+        recipeStorage.add({
+          id: recipeId,
+          name: aiResult.name,
+          imageUrl: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
+          servings: 1,
+          calories: aiResult.calories,
+          tags: generateRecipeTags(aiResult.name, aiResult.ingredients, aiResult.calories),
+          selected: false,
+          ingredients: aiResult.ingredients,
+        });
+
+        toast.success(`AI 已生成：${aiResult.name}（1人份）`);
+        navigate('/');
+        setIsProcessing(false);
+        return;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[AI生成] 菜名模式异常:', msg);
+      toast.error(`AI 生成失败：${msg}`);
+    }
+
+    setIsProcessing(false);
   };
 
   const handleSelectFile = (file: File | null) => {

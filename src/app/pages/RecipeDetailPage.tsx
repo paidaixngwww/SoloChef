@@ -52,7 +52,9 @@ export function RecipeDetailPage() {
   const freshIngredients = recipe.ingredients.filter(i => i.category === 'fresh');
   const pantryIngredients = recipe.ingredients.filter(i => i.category === 'pantry');
   const nutrition = estimateNutrition(recipe.ingredients, recipe.name);
-  const nutritionTips = generateNutritionTips(recipe.ingredients, nutrition, recipe.name, recipe.calories);
+  // 使用营养素反推的热量（蛋白质×4+脂肪×9+碳水×4+纤维×2），确保与营养素数据自洽
+  const consistentCalories = nutrition.calories;
+  const nutritionTips = generateNutritionTips(recipe.ingredients, nutrition, recipe.name, consistentCalories);
 
   return (
     <div className="min-h-screen pb-24" style={{ backgroundColor: '#F9F7F2' }}>
@@ -133,17 +135,15 @@ export function RecipeDetailPage() {
                 {recipe.ingredients.length} 种食材
               </span>
             </div>
-            {recipe.calories && (
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: '#F4A261' }}
-                />
-                <span className="text-sm" style={{ color: '#F4A261' }}>
-                  {recipe.calories} kcal
-                </span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: '#F4A261' }}
+              />
+              <span className="text-sm" style={{ color: '#F4A261' }}>
+                {consistentCalories} kcal
+              </span>
+            </div>
           </div>
 
           {/* Tags */}
@@ -261,7 +261,7 @@ export function RecipeDetailPage() {
         </motion.div>
 
         {/* Nutrition Breakdown */}
-        <NutritionBreakdown nutrition={nutrition} displayCalories={recipe.calories} delay={0.45} />
+        <NutritionBreakdown nutrition={nutrition} delay={0.45} />
 
         {/* 营养特点与建议 */}
         {nutritionTips.length > 0 && (
@@ -361,7 +361,7 @@ function DonutChart({ segments, size = 120 }: {
 
 /* ---------- 营养素拆分栏目 ---------- */
 
-function NutritionBreakdown({ nutrition, displayCalories, delay }: { nutrition: NutritionData; displayCalories?: number; delay: number }) {
+function NutritionBreakdown({ nutrition, delay }: { nutrition: NutritionData; delay: number }) {
   const items = [
     { label: '蛋白质', value: nutrition.protein, unit: 'g', color: '#E07A5F', calPerGram: 4 },
     { label: '脂肪', value: nutrition.fat, unit: 'g', color: '#F4A261', calPerGram: 9 },
@@ -403,7 +403,7 @@ function NutritionBreakdown({ nutrition, displayCalories, delay }: { nutrition: 
           <DonutChart segments={segments} size={120} />
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-lg font-bold" style={{ color: '#3D405B' }}>
-              {displayCalories ?? nutrition.calories}
+              {nutrition.calories}
             </span>
             <span className="text-xs" style={{ color: '#81B29A' }}>kcal</span>
           </div>

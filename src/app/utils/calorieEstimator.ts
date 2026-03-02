@@ -24,6 +24,9 @@ const CALORIE_MAP: Record<string, number> = {
   豆腐: 81, 嫩豆腐: 60, 老豆腐: 81, 豆腐干: 140, 豆腐皮: 200, 腐竹: 459,
   // 肉类（每100g）
   猪肉: 395, 猪肉末: 250, 排骨: 264, 猪排骨: 264, 小排: 264, 肋排: 264,
+  猪肝: 129, 鸡肝: 121, 鸭肝: 128, 肝: 129, 猪肚: 110, 猪腰: 96, 猪蹄: 260,
+  肥肠: 196, 大肠: 196, 猪心: 119, 猪舌: 233, 猪耳: 176, 鸡胗: 118, 鸭胗: 92,
+  牛肚: 72, 牛百叶: 72, 毛肚: 72, 黄喉: 36, 鹅肝: 129, 腰花: 96,
   牛肉: 125, 牛腩: 332, 鸡肉: 167, 鸡胸肉: 133, 鸡腿: 181, 鸡翅: 194,
   羊肉: 203, 鸭肉: 240,
   虾: 87, 虾仁: 87, 大虾: 87, 鱼: 104, 三文鱼: 139, 鲈鱼: 105, 带鱼: 127,
@@ -39,6 +42,10 @@ const CALORIE_MAP: Record<string, number> = {
   辣椒粉: 31, 姜: 4, 姜丝: 4, 蒜: 8, 蒜末: 8, 蒜片: 8, 大蒜: 8,
   葱: 3, 葱花: 3, 葱姜蒜: 5, 小葱: 3, 青葱: 3,
   八角: 10, 桂皮: 10, 花椒: 10, 干辣椒: 10,
+  // 西式/沙拉类调味料（每10ml/g）
+  蜂蜜: 32, 柠檬汁: 2, 沙拉汁: 15, 沙拉酱: 60, 千岛酱: 45, 蛋黄酱: 70,
+  芥末酱: 10, 黑胡椒: 25, 海盐: 0, 红酒醋: 2, 意大利醋: 8, 味噌: 20,
+  味醂: 24, 寿司醋: 15, 韩式辣酱: 20, 芝麻: 55,
 };
 
 /**
@@ -87,6 +94,7 @@ export function estimateCalories(ingredients: Ingredient[], recipeName?: string)
     }
 
     const unit = ing.unit.toLowerCase();
+    const isPantry = ing.category === 'pantry';
     if (unit === '个' || unit === '只' || unit === '颗') {
       // 鸡蛋=72kcal/个，其他按 50kcal/个
       total += amt * (ing.name.includes('蛋') ? 72 : 50);
@@ -97,13 +105,20 @@ export function estimateCalories(ingredients: Ingredient[], recipeName?: string)
     } else if (unit === 'ml' || unit === '毫升') {
       total += (amt / 10) * calPer;
     } else {
-      // g 或无单位，按每 100g 计算
-      total += (amt / 100) * calPer;
+      // g 或无单位：调味料数据是每10g，生鲜数据是每100g
+      if (isPantry) {
+        total += (amt / 10) * calPer;
+      } else {
+        total += (amt / 100) * calPer;
+      }
     }
   }
 
-  // 根据烹饪方式修正热量
-  if (recipeName) {
+  // 如果食材列表中已包含油类，不再应用烹饪方式修正（避免重复计算）
+  const hasOilIngredient = ingredients.some(ing =>
+    ing.name.includes('油') && ing.category === 'pantry' && (parseFloat(ing.amount) || 0) > 0
+  );
+  if (recipeName && !hasOilIngredient) {
     total *= getCookingMultiplier(recipeName);
   }
 
