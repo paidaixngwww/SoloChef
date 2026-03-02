@@ -3,6 +3,24 @@
 > 专为独居青年设计的膳食管理与智能采购助手  
 > **买得精准，吃得从容**
 
+## 📸 产品截图
+
+<p align="center">
+  <img src="screenshots/01-home.png" width="200" alt="首页 - 菜谱列表" />
+  <img src="screenshots/04-smart-capture.png" width="200" alt="智能采集 - 多模态输入" />
+  <img src="screenshots/05-photo-recognize.png" width="200" alt="拍照识别 - AI识别菜谱" />
+  <img src="screenshots/06-recipe-detail.png" width="200" alt="菜谱详情 - 营养素分析" />
+</p>
+
+<p align="center">
+  <img src="screenshots/02-profile.png" width="200" alt="个人档案 - BMR/TDEE计算" />
+  <img src="screenshots/03-about.png" width="200" alt="关于页 - 设计系统" />
+</p>
+
+<p align="center">
+  <sub>首页菜谱列表 · 智能采集入口 · AI拍照识别 · 营养素详情 · 个人档案 · 设计系统</sub>
+</p>
+
 ## ✨ 核心功能
 
 ### 1. 智能采集 (Smart Capture)
@@ -54,11 +72,14 @@ AI自动处理：
 ## 🛠️ 技术栈
 
 - **框架**: React 18 + TypeScript
-- **路由**: React Router 7 (Data Mode)
+- **构建**: Vite 6
+- **路由**: React Router 7
+- **样式**: Tailwind CSS v4 + shadcn/ui
 - **动画**: Motion (Framer Motion)
-- **样式**: Tailwind CSS v4
-- **图标**: Lucide React
-- **存储**: LocalStorage
+- **图表**: Recharts
+- **AI**: 智谱 GLM-4V-Flash（多模态识别）
+- **OCR**: Tesseract.js（离线降级）
+- **存储**: LocalStorage + IndexedDB
 - **字体**: Inter + Noto Sans SC
 
 ## 📱 页面结构
@@ -112,18 +133,27 @@ src/
 │   │   ├── RecipeCard.tsx          # 菜谱卡片
 │   │   ├── EmptyState.tsx          # 空状态
 │   │   ├── MergeAnimation.tsx      # 合并动画
-│   │   └── DesignShowcase.tsx      # 设计系统展示
+│   │   ├── DesignShowcase.tsx      # 设计系统展示
+│   │   └── ui/                     # shadcn/ui 组件库
 │   ├── pages/
 │   │   ├── HomePage.tsx            # 首页
-│   │   ├── AddRecipePage.tsx       # 添加菜谱
-│   │   ├── RecipeDetailPage.tsx    # 菜谱详情
+│   │   ├── AddRecipePage.tsx       # 智能采集（AI识图+菜名生成）
+│   │   ├── RecipeDetailPage.tsx    # 菜谱详情（营养素环形图）
 │   │   ├── ShoppingListPage.tsx    # 采购清单
+│   │   ├── ProfilePage.tsx         # 个人档案（BMR/TDEE）
 │   │   └── AboutPage.tsx           # 关于页面
 │   ├── types/
 │   │   └── recipe.ts               # 类型定义
+│   ├── hooks/
+│   │   └── useRecipeImage.ts       # 图片加载 Hook
 │   ├── utils/
-│   │   ├── recipeStorage.ts        # 存储管理
-│   │   ├── ingredientMerger.ts     # 食材合并逻辑
+│   │   ├── recipeStorage.ts        # localStorage 菜谱存储
+│   │   ├── imageStorage.ts         # IndexedDB 图片存储
+│   │   ├── ingredientMerger.ts     # 食材合并引擎
+│   │   ├── calorieEstimator.ts     # 本地热量估算
+│   │   ├── nutritionEstimator.ts   # 营养素估算与建议
+│   │   ├── recipeTagGenerator.ts   # 智能标签生成
+│   │   ├── userProfile.ts          # 用户档案（BMR/TDEE）
 │   │   └── mockData.ts             # 示例数据
 │   ├── routes.tsx                  # 路由配置
 │   └── App.tsx                     # 应用入口
