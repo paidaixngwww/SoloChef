@@ -3,7 +3,7 @@
 ## 🎯 核心流程
 
 ### 1️⃣ 首页 (HomePage)
-![Uploading 8e0736e6cbe9b7ddd80889daf2227de1.png…]()
+**路径**: `/recipe/:id`
 
 
 **功能**:
